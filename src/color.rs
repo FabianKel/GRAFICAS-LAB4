@@ -2,9 +2,9 @@ use std::fmt;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Color {
-    r: u8,
-    g: u8,
-    b: u8,
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
 }
 
 impl Color {
@@ -36,7 +36,22 @@ impl Color {
             b: (self.b as f32 + (other.b as f32 - self.b as f32) * t).round() as u8,
         }
     }
+    pub fn blend(color1: Color, color2: Color, factor: f32) -> Color {
+        let r = (color1.r as f32 * (1.0 - factor) + color2.r as f32 * factor) as u8;
+        let g = (color1.g as f32 * (1.0 - factor) + color2.g as f32 * factor) as u8;
+        let b = (color1.b as f32 * (1.0 - factor) + color2.b as f32 * factor) as u8;
+        Color { r, g, b }
+    }
+
+    pub fn apply_intensity(&self, intensity: f32) -> Color {
+        Color {
+            r: (self.r as f32 * intensity).clamp(0.0, 255.0) as u8,
+            g: (self.g as f32 * intensity).clamp(0.0, 255.0) as u8,
+            b: (self.b as f32 * intensity).clamp(0.0, 255.0) as u8,
+        }
+    }
 }
+
 
 use std::ops::Add;
 
@@ -71,3 +86,5 @@ impl fmt::Display for Color {
         write!(f, "Color(r: {}, g: {}, b: {})", self.r, self.g, self.b)
     }
 }
+
+
