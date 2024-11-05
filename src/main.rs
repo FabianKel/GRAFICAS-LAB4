@@ -19,7 +19,7 @@ use vertex::Vertex;
 use obj::Obj;
 use triangle::triangle;
 use camera::Camera;
-use shaders::{rocky_planet_shader, gas_giant_shader, gas_giant_shader2, volcanic_planet_shader, icy_planet_shader, desert_planet_shader, water_planet_shader, moon_shader, vertex_shader};
+use shaders::{ring_shader, rocky_planet_shader, gas_giant_shader, gas_giant_shader2, volcanic_planet_shader, icy_planet_shader, desert_planet_shader, water_planet_shader, moon_shader, vertex_shader};
 use fastnoise_lite::{FastNoiseLite, NoiseType};
 
 pub struct Uniforms {
@@ -115,17 +115,20 @@ fn main() {
 
     let mut camera = Camera::new(Vec3::new(0.0, 0.0, 5.0), Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0));
     let obj = Obj::load("assets/models/sphere2.obj").expect("Error al cargar el modelo");
+    let ring_obj = Obj::load("assets/models/ring1.obj").expect("Error al cargar el modelo del aro");
+    let ring_vertex_array = ring_obj.get_vertex_array();
     let vertex_array = obj.get_vertex_array();
 
     // Define `current_shader` como un puntero de función.
     let mut current_shader: fn(&Fragment, &Uniforms) -> Color = rocky_planet_shader;
+    let mut show_ring = false;
 
     while window.is_open() {
         if window.is_key_down(Key::Escape) {
             break;
         }
 
-        handle_input(&window, &mut camera, &mut current_shader);
+        handle_input(&window, &mut camera, &mut current_shader, &mut show_ring);
         framebuffer.clear();
 
         let time_elapsed = start_time.elapsed().as_secs_f32();
@@ -135,14 +138,14 @@ fn main() {
         let viewport_matrix = create_viewport_matrix(framebuffer_width as f32, framebuffer_height as f32);
         let uniforms = Uniforms { model_matrix, view_matrix, projection_matrix, viewport_matrix, time: time_elapsed, noise: create_noise() };
 
-        render(&mut framebuffer, &uniforms, &vertex_array, current_shader);
+        render(&mut framebuffer, &uniforms, &vertex_array, &ring_vertex_array, current_shader, show_ring);
 
         window.update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height).unwrap();
         std::thread::sleep(frame_delay);
     }
 }
 
-fn handle_input(window: &Window, camera: &mut Camera, current_shader: &mut fn(&Fragment, &Uniforms) -> Color) {
+fn handle_input(window: &Window, camera: &mut Camera, current_shader: &mut fn(&Fragment, &Uniforms) -> Color,  show_ring: &mut bool) {
     let movement_speed = 1.0;
     let rotation_speed = PI / 50.0;
     let zoom_speed = 0.1;
@@ -150,27 +153,35 @@ fn handle_input(window: &Window, camera: &mut Camera, current_shader: &mut fn(&F
     // Cambia de shader según el número seleccionado.
     if window.is_key_down(Key::Key1) {
         *current_shader = rocky_planet_shader;
+        *show_ring = false;
     }
     if window.is_key_down(Key::Key2) {
         *current_shader = gas_giant_shader;
     }
     if window.is_key_down(Key::Key3) {
         *current_shader = volcanic_planet_shader;
+        *show_ring = false;
+
     }
     if window.is_key_down(Key::Key4) {
         *current_shader = icy_planet_shader;
+        *show_ring = false;
     }
     if window.is_key_down(Key::Key5) {
         *current_shader = desert_planet_shader;
+        *show_ring = false;
     }
     if window.is_key_down(Key::Key6) {
         *current_shader = water_planet_shader;
+        *show_ring = false;
     }
     if window.is_key_down(Key::Key7) {
         *current_shader = moon_shader;
+        *show_ring = false;
     }
     if window.is_key_down(Key::Key8) {
         *current_shader = gas_giant_shader2;
+        *show_ring = true;
     }
 
     // Controles de movimiento y rotación de la cámara
@@ -214,7 +225,7 @@ fn handle_input(window: &Window, camera: &mut Camera, current_shader: &mut fn(&F
     }
 }
 
-fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Vertex], current_shader: fn(&Fragment, &Uniforms) -> Color) {
+fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Vertex], ring_vertex_array: &[Vertex], current_shader: fn(&Fragment, &Uniforms) -> Color, show_ring: bool) {
     let transformed_vertices = vertex_array.iter()
         .map(|vertex| vertex_shader(vertex, uniforms))
         .collect::<Vec<_>>();
@@ -226,8 +237,43 @@ fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Ve
 
     let mut fragments = Vec::new();
 
+    // Renderiza los planetas
     for tri in &triangles {
         fragments.extend(triangle(&tri[0], &tri[1], &tri[2]));
+    }
+
+    // Renderiza el aro
+    if show_ring {
+        let translation = Vec3::new(0.0, -0.4, 0.0);
+
+        let transformed_ring_vertices = ring_vertex_array.iter()
+            .map(|vertex| {
+                let mut transformed_vertex = vertex.clone();
+                transformed_vertex.position.x += translation.x;
+                transformed_vertex.position.y += translation.y;
+                transformed_vertex.position.z += translation.z;
+                vertex_shader(&transformed_vertex, uniforms)
+            })
+            .collect::<Vec<_>>();
+
+        let ring_triangles = transformed_ring_vertices.chunks(3)
+            .filter(|tri| tri.len() == 3)
+            .map(|tri| [tri[0].clone(), tri[1].clone(), tri[2].clone()])
+            .collect::<Vec<_>>();
+
+        let ring_shader_fn: fn(&Fragment, &Uniforms) -> Color = ring_shader;
+
+        for tri in &ring_triangles {
+            let ring_fragments: Vec<Fragment> = triangle(&tri[0], &tri[1], &tri[2]);
+            for fragment in ring_fragments {
+                let (x, y) = (fragment.position.x as usize, fragment.position.y as usize);
+                if x < framebuffer.width && y < framebuffer.height {
+                    let shaded_color = ring_shader_fn(&fragment, uniforms);
+                    framebuffer.set_current_color(shaded_color.to_hex());
+                    framebuffer.point(x, y, fragment.depth);
+                }
+            }
+        }
     }
 
     for fragment in fragments {

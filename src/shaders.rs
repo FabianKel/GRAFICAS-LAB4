@@ -41,6 +41,42 @@ pub fn vertex_shader(vertex: &Vertex, uniforms: &Uniforms) -> Vertex {
     }
 }
 
+pub fn ring_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
+    let color_palette = [
+        Vec3::new(235.0 / 255.0, 91.0 / 255.0, 96.0 / 255.0),
+        Vec3::new(237.0 / 255.0, 112.0 / 255.0, 47.0 / 255.0),
+        Vec3::new(234.0 / 255.0, 116.0 / 255.0, 92.0 / 255.0),
+        Vec3::new(235.0 / 255.0, 91.0 / 255.0, 181.0 / 255.0),
+        Vec3::new(235.0 / 255.0, 165.0 / 255.0, 91.0 / 255.0),
+    ];
+
+    let noise_scale = 1.0;
+    let noise_variation = uniforms.noise.get_noise_2d(
+        fragment.vertex_position.x * noise_scale,
+        fragment.vertex_position.y * noise_scale,
+    );
+
+    // Calcular el ángulo y la distancia para crear franjas alrededor del aro
+    let angle = fragment.vertex_position.x.atan2(fragment.vertex_position.y); // Suponiendo que el aro está en el plano XY
+    let radius = fragment.vertex_position.len(); // Distancia desde el centro del torus
+
+    // Generar patrón de bandas
+    let stripe_pattern = (angle * 8.0 + noise_variation * 1.5).sin();
+    let color_index = ((stripe_pattern + 1.0) / 2.0 * (color_palette.len() as f32)) as usize % color_palette.len();
+    let mut gas_color = color_palette[color_index] * (1.0 + noise_variation * 0.1);
+
+    // Ajuste de intensidad para efectos de iluminación
+    gas_color = gas_color * fragment.intensity;
+
+    Color::new(
+        (gas_color.x * 255.0) as u8,
+        (gas_color.y * 255.0) as u8,
+        (gas_color.z * 255.0) as u8,
+    )
+}
+
+
+
 pub fn rocky_planet_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
     // Capas de la superficiergb()
     let mountain_color = Color::new(228, 179, 85);
